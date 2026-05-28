@@ -575,49 +575,37 @@ if refresh_btn:
 @st.cache_data(ttl=3600)  
 def fetch_google_drive_data():
     
-    # --- UPDATED WITH NEW GOOGLE SHEETS IDs ---
+    # --- UPDATED WITH NEW GOOGLE SHEETS IDs & GIDs ---
     time_sheet_id = "1DoOX2msE4D_7sZY_zJ_ttK0v_BeEQBSqGsHAP7l9iHo"  
-    ops_export_id = "19OjHTTCf3qV5jKNRiKDa9eQz-RZ58gRiFMAsOzxW0YU"
-    # ------------------------------------------
+    time_gid = "1647128099"
     
-    def robust_fetch(file_id):
+    ops_export_id = "19OjHTTCf3qV5jKNRiKDa9eQz-RZ58gRiFMAsOzxW0YU"
+    ops_gid = "490320926"
+    # -------------------------------------------------
+    
+    def pull_csv(sheet_id, gid):
         import time
         cb = int(time.time())
+        url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}&cb={cb}"
         
-        # METHOD 1: Try reading it as a Native Google Sheet
-        url1 = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=csv&cb={cb}"
-        resp1 = requests.get(url1)
-        if resp1.status_code == 200 and not resp1.content.strip().lower().startswith(b"<!doctype html"):
-            return resp1.content
-            
-        # METHOD 2: Try reading it as a generic uploaded file (like a CSV stored in Drive)
-        url2 = f"https://drive.google.com/uc?export=download&id={file_id}"
-        session = requests.Session()
-        resp2 = session.get(url2)
-        
-        # METHOD 3: Bypass Google's "Virus Scan Warning" page for larger files
-        if b'confirm=' in resp2.content and b'download_warning' in resp2.content:
-            token = None
-            for key, value in session.cookies.items():
-                if key.startswith('download_warning'):
-                    token = value
-                    break
-            if token:
-                url3 = f"https://drive.google.com/uc?export=download&id={file_id}&confirm={token}"
-                resp2 = session.get(url3)
-                
-        if resp2.status_code == 200 and not resp2.content.strip().lower().startswith(b"<!doctype html"):
-            return resp2.content
-            
-        return None
+        try:
+            resp = requests.get(url)
+            if resp.status_code == 200:
+                content_start = resp.content[:100].lower()
+                if b"<!doctype html" in content_start or b"<html" in content_start:
+                    st.sidebar.error(f"⚠️ Google blocked the download for sheet {sheet_id[:5]}... It returned a web page instead of data (likely a login screen). Please verify 'General access' is set to 'Anyone with the link'.")
+                    return None
+                return resp.content
+            else:
+                st.sidebar.error(f"⚠️ HTTP Error {resp.status_code} for file {sheet_id[:5]}...")
+                return None
+        except Exception as e:
+            st.sidebar.error(f"⚠️ Request failed: {e}")
+            return None
 
-    time_bytes = robust_fetch(time_sheet_id)
-    ops_bytes = robust_fetch(ops_export_id)
+    time_bytes = pull_csv(time_sheet_id, time_gid)
+    ops_bytes = pull_csv(ops_export_id, ops_gid)
     
-    if not time_bytes or not ops_bytes:
-        st.sidebar.error("⚠️ Failed to fetch data. Ensure files are shared properly and are valid data files.")
-        return None, None
-        
     return time_bytes, ops_bytes
 
 # Execute the fetch logic
