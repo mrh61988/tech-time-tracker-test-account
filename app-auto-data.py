@@ -572,35 +572,50 @@ refresh_btn = st.sidebar.button("🔄 Refresh Data from Google Sheets")
 if refresh_btn:
     st.cache_data.clear() # Clears Streamlit cache to pull fresh
 
-@st.cache_data(ttl=3600)  # Automatically caches the download to prevent spamming Google APIs (1 hr expiration)
+@st.cache_data(ttl=3600)  
 def fetch_google_drive_data():
     time_sheet_id = "1x-3eWRxH6V0Vmdre7DbWrrSXHw8NGISR"  
     ops_export_id = "1iIi7ng55K6UfU64oDEuvM5j8m6G0rD9N"
     
-    # CACHE BUSTER: A changing number that forces Google to skip its internal cache and generate fresh data
-    cb = int(time.time())
-    
-    # We use the direct Sheets CSV export URLs and attach the cache buster to the end
-    time_url = f"https://docs.google.com/spreadsheets/d/{time_sheet_id}/export?format=csv&cb={cb}"
-    ops_url = f"https://docs.google.com/spreadsheets/d/{ops_export_id}/export?format=csv&cb={cb}"
-    
-    try:
-        time_resp = requests.get(time_url)
-        ops_resp = requests.get(ops_url)
+    def robust_fetch(file_id):
+        import time
+        cb = int(time.time())
+        
+        # METHOD 1: Try reading it as a Native Google Sheet
+        url1 = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=csv&cb={cb}"
+        resp1 = requests.get(url1)
+        if resp1.status_code == 200 and not resp1.content.strip().lower().startswith(b"<!doctype html"):
+            return resp1.content
+            
+        # METHOD 2: Try reading it as a generic uploaded file (like a CSV stored in Drive)
+        url2 = f"https://drive.google.com/uc?export=download&id={file_id}"
+        session = requests.Session()
+        resp2 = session.get(url2)
+        
+        # METHOD 3: Bypass Google's "Virus Scan Warning" page for larger files
+        if b'confirm=' in resp2.content and b'download_warning' in resp2.content:
+            token = None
+            for key, value in session.cookies.items():
+                if key.startswith('download_warning'):
+                    token = value
+                    break
+            if token:
+                url3 = f"https://drive.google.com/uc?export=download&id={file_id}&confirm={token}"
+                resp2 = session.get(url3)
+                
+        if resp2.status_code == 200 and not resp2.content.strip().lower().startswith(b"<!doctype html"):
+            return resp2.content
+            
+        return None
 
-        # Final check if the requests failed completely or still returned an HTML page
-        if time_resp.status_code != 200 or ops_resp.status_code != 200:
-            st.sidebar.error("⚠️ Failed to fetch data. Verify link sharing permissions.")
-            return None, None
-            
-        if b"<!DOCTYPE html>" in ops_resp.content[:100].lower() or b"<html" in ops_resp.content[:100].lower():
-            st.sidebar.error("⚠️ Google returned a web page instead of CSV data. Verify it is set to 'Anyone with the link can view'.")
-            return None, None
-            
-        return time_resp.content, ops_resp.content
-    except Exception as e:
-        st.sidebar.error(f"⚠️ Connection error: {e}")
+    time_bytes = robust_fetch(time_sheet_id)
+    ops_bytes = robust_fetch(ops_export_id)
+    
+    if not time_bytes or not ops_bytes:
+        st.sidebar.error("⚠️ Failed to fetch data. Ensure files are shared properly and are valid data files.")
         return None, None
+        
+    return time_bytes, ops_bytes
 
 # Execute the fetch logic
 time_bytes, ops_bytes = fetch_google_drive_data()
@@ -884,7 +899,7 @@ if time_bytes and ops_bytes:
             final_df[f'{day} Jobs'] = final_df[day + '_Job_Count'].astype(int)
             final_df[f'{day} Clocked'] = final_df[day + '_Clocked_Hrs'].apply(format_hm)
             final_df[f'{day} Job Time'] = final_df[day + '_Job_Hrs'].apply(format_hm)
-            final_df[f'{day} Diff'] = final_df[day + '_Diff_Hrs'].apply(format_hm)
+            final_df[f'{day} Diff'] = final_df[f'{day} Diff'].apply(format_hm)
             
             day_df = pd.DataFrame()
             day_df['Name'] = final_df['Name']
