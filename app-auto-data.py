@@ -481,7 +481,7 @@ def show_advanced_reporting(unexploded_ops, ops_df, final_df, bounds_df, delayed
     with col_left:
         st.subheader("⭐ The Gold Star High-Performer List")
         st.markdown("*(Technicians who average under 1:30 of unallocated difference per day worked. Store delays do NOT penalize techs)*")
-        gold_star_df = final_df[(final_df['Daily_Avg_Diff_Hrs'] < 1.5) & (final_df['Days_Worked'] > 0)].copy()
+        gold_star_df = final_df[(final_df.get('Daily_Avg_Diff_Hrs', 0) < 1.5) & (final_df.get('Days_Worked', 0) > 0)].copy()
         if not gold_star_df.empty:
             gold_star_df = gold_star_df.sort_values(by='Daily_Avg_Diff_Hrs', ascending=True)
             gold_star_df['Total Clocked'] = gold_star_df['Total_Weekly_Clocked_Hrs'].apply(format_hm)
@@ -499,11 +499,11 @@ def show_advanced_reporting(unexploded_ops, ops_df, final_df, bounds_df, delayed
         st.markdown("*(Compares a technician's LSI performance against their WH performance. Flags techs where the gap exceeds 15% sorted by priority warnings)*")
         skill_df = final_df.copy()
         if not skill_df.empty:
-            skill_df['Eff Gap'] = np.where((skill_df['Simple_Installs_Count'] > 0) & (skill_df['Water_Heaters_Count'] > 0), abs(skill_df['LSI_Eff_Raw'] - skill_df['WH_Eff_Raw']), 0.0)
+            skill_df['Eff Gap'] = np.where((skill_df.get('Simple_Installs_Count', 0) > 0) & (skill_df.get('Water_Heaters_Count', 0) > 0), abs(skill_df.get('LSI_Eff_Raw', 0) - skill_df.get('WH_Eff_Raw', 0)), 0.0)
             def assign_skill_flag(row):
-                lsi_cnt, wh_cnt = row['Simple_Installs_Count'], row['Water_Heaters_Count']
+                lsi_cnt, wh_cnt = row.get('Simple_Installs_Count', 0), row.get('Water_Heaters_Count', 0)
                 if lsi_cnt > 0 and wh_cnt > 0: 
-                    if row['Eff Gap'] > 15.0: return "⚠️ WH Ride-Along Required" if row['LSI_Eff_Raw'] > row['WH_Eff_Raw'] else "⚠️ LSI Ride-Along Required"
+                    if row['Eff Gap'] > 15.0: return "⚠️ WH Ride-Along Required" if row.get('LSI_Eff_Raw', 0) > row.get('WH_Eff_Raw', 0) else "⚠️ LSI Ride-Along Required"
                     return "✅ Balanced Execution"
                 if lsi_cnt > 0: return "ℹ️ Only LSI Jobs Assigned"
                 if wh_cnt > 0: return "ℹ️ Only WH Jobs Assigned"
@@ -810,7 +810,7 @@ if time_bytes and ops_bytes:
         tech_rev_agg = ops_df.groupby('Name')['Total Invoice Amount'].sum().reset_index()
         tech_rev_agg.columns = ['Name', 'Total_Assigned_Revenue']
         final_df = pd.merge(final_df, tech_rev_agg, on='Name', how='left').fillna(0.0)
-        final_df['Rev_Per_Clocked_Hr'] = np.where(final_df['Total_Weekly_Clocked_Hrs'] > 0, final_df['Total_Assigned_Revenue'] / final_df['Total_Weekly_Clocked_Hrs'], 0.0)
+        final_df['Rev_Per_Clocked_Hr'] = np.where(final_df.get('Total_Weekly_Clocked_Hrs', 0) > 0, final_df.get('Total_Assigned_Revenue', 0) / final_df.get('Total_Weekly_Clocked_Hrs', 1), 0.0)
 
         # =========================================================================================
         # 🧪 SEAN MARBLE TIME-SHEET ATTENDANCE ABSENCE EVALUATION CHECK LOOP
@@ -820,7 +820,7 @@ if time_bytes and ops_bytes:
             sean_row = sean_timecard.iloc[0]
             unworked_clocked_days = 0
             for d in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']:
-                if sean_row[f'{d}_Clocked_Hrs'] <= 0:
+                if sean_row.get(f'{d}_Clocked_Hrs', 0) <= 0:
                     unworked_clocked_days += 1
             sean_penalty_value = unworked_clocked_days * 269.23
         else:
@@ -829,11 +829,11 @@ if time_bytes and ops_bytes:
         st.session_state['sean_absence_penalty_global'] = sean_penalty_value
 
         # PERFORMANCE MATRICES GENERATION
-        final_df['LSI_Goal_Hrs'] = final_df['Simple_Installs_Count'] * 2.0
-        final_df['WH_Goal_Hrs'] = final_df['Water_Heaters_Count'] * 3.5
+        final_df['LSI_Goal_Hrs'] = final_df.get('Simple_Installs_Count', 0) * 2.0
+        final_df['WH_Goal_Hrs'] = final_df.get('Water_Heaters_Count', 0) * 3.5
         final_df['Total_Goal_Hrs'] = final_df['LSI_Goal_Hrs'] + final_df['WH_Goal_Hrs']
-        final_df['Assumed_LSI_Clocked'] = np.where(final_df['Total_Goal_Hrs'] > 0, final_df['Total_Weekly_Clocked_Hrs'] * (final_df['LSI_Goal_Hrs'] / final_df['Total_Goal_Hrs']), 0.0)
-        final_df['Assumed_WH_Clocked'] = np.where(final_df['Total_Goal_Hrs'] > 0, final_df['Total_Weekly_Clocked_Hrs'] * (final_df['WH_Goal_Hrs'] / final_df['Total_Goal_Hrs']), 0.0)
+        final_df['Assumed_LSI_Clocked'] = np.where(final_df['Total_Goal_Hrs'] > 0, final_df.get('Total_Weekly_Clocked_Hrs', 0) * (final_df['LSI_Goal_Hrs'] / final_df['Total_Goal_Hrs']), 0.0)
+        final_df['Assumed_WH_Clocked'] = np.where(final_df['Total_Goal_Hrs'] > 0, final_df.get('Total_Weekly_Clocked_Hrs', 0) * (final_df['WH_Goal_Hrs'] / final_df['Total_Goal_Hrs']), 0.0)
 
         rev_per_hour_df_calc = final_df.copy()
         rev_per_hour_df_calc['Assumed Pay Amount'] = rev_per_hour_df_calc.apply(get_adjusted_table_pay, axis=1)
@@ -846,11 +846,11 @@ if time_bytes and ops_bytes:
             ops_df = ops_df.drop(columns=['Tech_Total_Work_Hrs'])
         ops_df = pd.merge(ops_df, tech_total_field_hrs, on='Name', how='left')
         
-        ops_df['Job_Time_Weight'] = np.where(ops_df['Tech_Total_Work_Hrs'] > 0, ops_df['Total_Job_Time_Hours'] / ops_df['Tech_Total_Work_Hrs'], 0.0)
+        ops_df['Job_Time_Weight'] = np.where(ops_df.get('Tech_Total_Work_Hrs', 0) > 0, ops_df['Total_Job_Time_Hours'] / ops_df.get('Tech_Total_Work_Hrs', 1), 0.0)
         ops_df['Allocated_Job_Pay'] = ops_df['Computed_Row_Pay'] * ops_df['Job_Time_Weight']
         ops_df['Allocated_Job_Pay'] = np.where(
             ops_df['Name'].str.lower().str.contains('bryan') | ops_df['Name'].str.lower().str.contains('erik'),
-            ops_df['Total Invoice Amount'] * 0.33,
+            ops_df.get('Total Invoice Amount', 0) * 0.33,
             ops_df['Allocated_Job_Pay']
         )
 
@@ -859,7 +859,7 @@ if time_bytes and ops_bytes:
         df_macro_pay['Is_Contractor'] = df_macro_pay['Assigned Team Members'].apply(check_contractor)
         
         df_macro_pay['Cost_Burden_Sub'] = np.where(
-            df_macro_pay['Business Unit'] == 'Lowes - Water Heaters',
+            df_macro_pay.get('Business Unit', '') == 'Lowes - Water Heaters',
             np.where(df_macro_pay['Tech_Count'] > 1, 175.0, 100.0),
             0.0
         )
@@ -869,18 +869,18 @@ if time_bytes and ops_bytes:
         df_macro_pay['Combined_Lowe_Costs'] = np.maximum(0.0, (df_macro_pay['Prod_Cost'] + df_macro_pay['Serv_Cost']) - df_macro_pay['Cost_Burden_Sub'])
         
         df_macro_pay['Flat_Rate_Labor'] = np.where(
-            df_macro_pay['Business Unit'] == 'Lowes - Water Heaters',
+            df_macro_pay.get('Business Unit', '') == 'Lowes - Water Heaters',
             np.where(df_macro_pay['Tech_Count'] > 1, 175.0, 100.0),
             0.0
         )
-        df_macro_pay['Logged_Time_Pay'] = df_macro_pay['#ID'].map(ops_df.groupby('#ID')['Allocated_Job_Pay'].sum().to_dict()).fillna(0.0)
+        df_macro_pay['Logged_Time_Pay'] = df_macro_pay.get('#ID', pd.Series()).map(ops_df.groupby('#ID')['Allocated_Job_Pay'].sum().to_dict()).fillna(0.0)
         
         df_macro_pay['Assumed_Labor_Payload'] = np.where(
-            (df_macro_pay['Business Unit'] == 'Lowes - Simple Installs') & df_macro_pay['Is_Contractor'],
-            df_macro_pay['Total Invoice Amount'],
+            (df_macro_pay.get('Business Unit', '') == 'Lowes - Simple Installs') & df_macro_pay['Is_Contractor'],
+            df_macro_pay.get('Total Invoice Amount', 0),
             np.maximum(df_macro_pay['Flat_Rate_Labor'], df_macro_pay['Logged_Time_Pay'])
         )
-        df_macro_pay['Net_Profit_Raw'] = df_macro_pay['Total Invoice Amount'] - df_macro_pay['Combined_Lowe_Costs'] - df_macro_pay['Assumed_Labor_Payload']
+        df_macro_pay['Net_Profit_Raw'] = df_macro_pay.get('Total Invoice Amount', 0) - df_macro_pay['Combined_Lowe_Costs'] - df_macro_pay['Assumed_Labor_Payload']
             
         st.sidebar.header("🔧 Job Status Time Adjustments")
         global_adj_mins = st.sidebar.number_input("🌍 Global Adj (Minutes)", value=0, step=15, key="global_adj")
@@ -891,15 +891,22 @@ if time_bytes and ops_bytes:
             adjustments[tech] = (tech_adj_mins / 60.0) + global_adj_hrs
             
         final_df['Adjustment_Hrs'] = final_df['Name'].map(adjustments).fillna(0.0)
-        final_df['Total_Weekly_Job_Hrs'] = final_df['Total_Weekly_Job_Hrs'] + final_df['Adjustment_Hrs']
+        final_df['Total_Weekly_Job_Hrs'] = final_df.get('Total_Weekly_Job_Hrs', 0) + final_df['Adjustment_Hrs']
 
+        # --- SAFELY CREATE DISPLAY AND DAILY DATAFRAMES (PREVENTS KEYERRORS) ---
         display_dfs = {}
         for day in days:
-            final_df[day + '_Diff_Hrs'] = final_df[day + '_Clocked_Hrs'] - final_df[day + '_Job_Hrs']
-            final_df[f'{day} Jobs'] = final_df[day + '_Job_Count'].astype(int)
-            final_df[f'{day} Clocked'] = final_df[day + '_Clocked_Hrs'].apply(format_hm)
-            final_df[f'{day} Job Time'] = final_df[day + '_Job_Hrs'].apply(format_hm)
-            final_df[f'{day} Diff'] = final_df[f'{day} Diff'].apply(format_hm)
+            # Bulletproof retrieval using .get() to prevent missing column errors
+            final_df[f'{day}_Clocked_Hrs'] = final_df.get(f'{day}_Clocked_Hrs', 0.0)
+            final_df[f'{day}_Job_Hrs'] = final_df.get(f'{day}_Job_Hrs', 0.0)
+            final_df[f'{day}_Job_Count'] = final_df.get(f'{day}_Job_Count', 0)
+            
+            final_df[f'{day}_Diff_Hrs'] = final_df[f'{day}_Clocked_Hrs'] - final_df[f'{day}_Job_Hrs']
+            
+            final_df[f'{day} Jobs'] = final_df[f'{day}_Job_Count'].astype(int)
+            final_df[f'{day} Clocked'] = final_df[f'{day}_Clocked_Hrs'].apply(format_hm)
+            final_df[f'{day} Job Time'] = final_df[f'{day}_Job_Hrs'].apply(format_hm)
+            final_df[f'{day} Diff'] = final_df[f'{day}_Diff_Hrs'].apply(format_hm)
             
             day_df = pd.DataFrame()
             day_df['Name'] = final_df['Name']
@@ -909,17 +916,13 @@ if time_bytes and ops_bytes:
             day_df[f'{day} Diff'] = final_df[f'{day} Diff']
             display_dfs[day] = day_df
             
-        manager_cols = ['Name']
-        for d in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]: manager_cols.extend([f'{d} Jobs', f'{d} Clocked', f'{d} Job Time', f'{d} Diff'])
-        display_dfs['Manager'] = final_df[manager_cols]
+        final_df['Total_Weekly_Diff_Hrs'] = final_df.get('Total_Weekly_Clocked_Hrs', 0) - final_df.get('Total_Weekly_Job_Hrs', 0)
+        final_df['Daily_Avg_Diff_Hrs'] = np.where(final_df.get('Days_Worked', 0) > 0, final_df['Total_Weekly_Diff_Hrs'] / final_df.get('Days_Worked', 1), 0.0)
         
-        final_df['Total_Weekly_Diff_Hrs'] = final_df['Total_Weekly_Clocked_Hrs'] - final_df['Total_Weekly_Job_Hrs']
-        final_df['Daily_Avg_Diff_Hrs'] = np.where(final_df['Days_Worked'] > 0, final_df['Total_Weekly_Diff_Hrs'] / final_df['Days_Worked'], 0.0)
-        
-        final_df['Simple Installs'] = final_df['Simple_Installs_Hrs'].apply(format_hm)
-        final_df['Water Heaters'] = final_df['Water_Heaters_Hrs'].apply(format_hm)
-        final_df['Simple Installs Eff'] = np.where(final_df['Assumed_LSI_Clocked'] > 0, (final_df['Simple_Installs_Hrs'] / final_df['Assumed_LSI_Clocked']) * 100, 0.0)
-        final_df['Water Heaters Eff'] = np.where(final_df['Assumed_WH_Clocked'] > 0, (final_df['Water_Heaters_Hrs'] / final_df['Assumed_WH_Clocked']) * 100, 0.0)
+        final_df['Simple Installs'] = final_df.get('Simple_Installs_Hrs', pd.Series(0.0, index=final_df.index)).apply(format_hm)
+        final_df['Water Heaters'] = final_df.get('Water_Heaters_Hrs', pd.Series(0.0, index=final_df.index)).apply(format_hm)
+        final_df['Simple Installs Eff'] = np.where(final_df.get('Assumed_LSI_Clocked', 0) > 0, (final_df.get('Simple_Installs_Hrs', 0) / final_df.get('Assumed_LSI_Clocked', 1)) * 100, 0.0)
+        final_df['Water Heaters Eff'] = np.where(final_df.get('Assumed_WH_Clocked', 0) > 0, (final_df.get('Water_Heaters_Hrs', 0) / final_df.get('Assumed_WH_Clocked', 1)) * 100, 0.0)
         final_df['LSI_Eff_Raw'] = final_df['Simple Installs Eff']
         final_df['WH_Eff_Raw'] = final_df['Water Heaters Eff']
         
@@ -929,30 +932,30 @@ if time_bytes and ops_bytes:
         
         bu_summary_df = pd.DataFrame()
         bu_summary_df['Name'] = final_df['Name']
-        bu_summary_df['Total Clocked'] = final_df['Total_Weekly_Clocked_Hrs'].apply(format_hm)
-        bu_summary_df['Total Jobs'] = final_df['Total_Weekly_Job_Count'].astype(int)
-        bu_summary_df['LSI Jobs'] = final_df['Simple_Installs_Count'].astype(int)
+        bu_summary_df['Total Clocked'] = final_df.get('Total_Weekly_Clocked_Hrs', pd.Series(0.0, index=final_df.index)).apply(format_hm)
+        bu_summary_df['Total Jobs'] = final_df.get('Total_Weekly_Job_Count', pd.Series(0, index=final_df.index)).astype(int)
+        bu_summary_df['LSI Jobs'] = final_df.get('Simple_Installs_Count', pd.Series(0, index=final_df.index)).astype(int)
         bu_summary_df['LSI Tracked Hours'] = final_df['Simple Installs']
         bu_summary_df['LSI Efficiency'] = final_df['Simple Installs Eff']
-        bu_summary_df['WH Jobs'] = final_df['Water_Heaters_Count'].astype(int)
+        bu_summary_df['WH Jobs'] = final_df.get('Water_Heaters_Count', pd.Series(0, index=final_df.index)).astype(int)
         bu_summary_df['WH Tracked Hours'] = final_df['Water Heaters']
         bu_summary_df['WH Efficiency'] = final_df['Water Heaters Eff']
-        bu_summary_df['Total Efficiency'] = np.where(final_df['Total_Weekly_Clocked_Hrs'] > 0, (final_df['Total_Weekly_Job_Hrs'] / final_df['Total_Weekly_Clocked_Hrs']) * 100, 0.0)
+        bu_summary_df['Total Efficiency'] = np.where(final_df.get('Total_Weekly_Clocked_Hrs', 0) > 0, (final_df.get('Total_Weekly_Job_Hrs', 0) / final_df.get('Total_Weekly_Clocked_Hrs', 1)) * 100, 0.0)
         bu_summary_df['Total Efficiency'] = bu_summary_df['Total Efficiency'].apply(lambda x: f"{x:.1f}%")
         bu_summary_df['Total Unallocated Hours'] = final_df['Total_Weekly_Diff_Hrs'].apply(format_hm)
         
         # --- CALCULATE & APPEND DETAILED TOTAL DIVISION ROW ---
-        total_clocked_sum = final_df['Total_Weekly_Clocked_Hrs'].sum()
-        total_jobs_sum = final_df['Total_Weekly_Job_Count'].sum()
-        total_lsi_jobs_sum = final_df['Simple_Installs_Count'].sum()
-        total_lsi_hrs_sum = final_df['Simple_Installs_Hrs'].sum()
-        total_wh_jobs_sum = final_df['Water_Heaters_Count'].sum()
-        total_wh_hrs_sum = final_df['Water_Heaters_Hrs'].sum()
-        total_job_hrs_sum = final_df['Total_Weekly_Job_Hrs'].sum()
+        total_clocked_sum = final_df.get('Total_Weekly_Clocked_Hrs', pd.Series([0.0])).sum()
+        total_jobs_sum = final_df.get('Total_Weekly_Job_Count', pd.Series([0])).sum()
+        total_lsi_jobs_sum = final_df.get('Simple_Installs_Count', pd.Series([0])).sum()
+        total_lsi_hrs_sum = final_df.get('Simple_Installs_Hrs', pd.Series([0.0])).sum()
+        total_wh_jobs_sum = final_df.get('Water_Heaters_Count', pd.Series([0])).sum()
+        total_wh_hrs_sum = final_df.get('Water_Heaters_Hrs', pd.Series([0.0])).sum()
+        total_job_hrs_sum = final_df.get('Total_Weekly_Job_Hrs', pd.Series([0.0])).sum()
         total_diff_hrs_sum = final_df['Total_Weekly_Diff_Hrs'].sum()
         
-        total_lsi_goal_hrs = final_df['Assumed_LSI_Clocked'].sum()
-        total_wh_goal_hrs = final_df['Assumed_WH_Clocked'].sum()
+        total_lsi_goal_hrs = final_df.get('Assumed_LSI_Clocked', pd.Series([0.0])).sum()
+        total_wh_goal_hrs = final_df.get('Assumed_WH_Clocked', pd.Series([0.0])).sum()
         
         blended_lsi_eff = (total_lsi_hrs_sum / total_lsi_goal_hrs * 100) if total_lsi_goal_hrs > 0 else 0.0
         blended_wh_eff = (total_wh_hrs_sum / total_wh_goal_hrs * 100) if total_wh_goal_hrs > 0 else 0.0
@@ -975,7 +978,7 @@ if time_bytes and ops_bytes:
         display_dfs['Weekly'] = bu_summary_df
 
         # Secure total summaries layout mapping metrics securely inside parameters bounds
-        total_assumed_pay_adjusted = max(0.0, df_macro_pay['Assumed_Labor_Payload'].sum() - sean_penalty_value)
+        total_assumed_pay_adjusted = max(0.0, df_macro_pay.get('Assumed_Labor_Payload', pd.Series([0.0])).sum() - sean_penalty_value)
         pay_ratio_pct_adjusted = (total_assumed_pay_adjusted / raw_unsplit_volume * 100) if raw_unsplit_volume > 0 else 0.0
 
         bu_gross_rev = unexploded_ops.groupby('Business Unit')['Total Invoice Amount'].sum().reset_index()
@@ -1069,18 +1072,18 @@ if time_bytes and ops_bytes:
             with m_col2:
                 st.markdown("**📈 Pay Ratio per Clocked Hour**", unsafe_allow_html=True)
                 rev_per_hour_df = final_df.copy()
-                rev_per_hour_df['Total Clocked'] = rev_per_hour_df['Total_Weekly_Clocked_Hrs'].apply(format_hm)
-                rev_per_hour_df['Total Jobs'] = rev_per_hour_df['Total_Weekly_Job_Count'].astype(int)
-                rev_per_hour_df['Total Assigned Value'] = rev_per_hour_df['Total_Assigned_Revenue'].apply(lambda x: f"${x:,.2f}")
+                rev_per_hour_df['Total Clocked'] = rev_per_hour_df.get('Total_Weekly_Clocked_Hrs', pd.Series(0.0, index=rev_per_hour_df.index)).apply(format_hm)
+                rev_per_hour_df['Total Jobs'] = rev_per_hour_df.get('Total_Weekly_Job_Count', pd.Series(0, index=rev_per_hour_df.index)).astype(int)
+                rev_per_hour_df['Total Assigned Value'] = rev_per_hour_df.get('Total_Assigned_Revenue', pd.Series(0.0, index=rev_per_hour_df.index)).apply(lambda x: f"${x:,.2f}")
                 
                 rev_per_hour_df['Assumed Pay Amount'] = rev_per_hour_df.apply(get_adjusted_table_pay, axis=1)
                 rev_per_hour_df['Assumed Pay'] = rev_per_hour_df['Assumed Pay Amount'].apply(lambda x: f"${x:,.2f}" if x > 0 else "-")
-                rev_per_hour_df['Pay Pct'] = np.where(rev_per_hour_df['Total_Assigned_Revenue'] > 0, (rev_per_hour_df['Assumed Pay Amount'] / rev_per_hour_df['Total_Assigned_Revenue']) * 100, 0.0)
+                rev_per_hour_df['Pay Pct'] = np.where(rev_per_hour_df.get('Total_Assigned_Revenue', 0) > 0, (rev_per_hour_df['Assumed Pay Amount'] / rev_per_hour_df.get('Total_Assigned_Revenue', 1)) * 100, 0.0)
                 rev_per_hour_df['Pay % vs Assigned Revenue'] = rev_per_hour_df['Pay Pct'].apply(lambda x: f"{x:.1f}%" if x > 0 else "-")
                 
-                rev_per_hour_df['Net Margin Raw'] = rev_per_hour_df['Total_Assigned_Revenue'] - rev_per_hour_df['Assumed Pay Amount']
+                rev_per_hour_df['Net Margin Raw'] = rev_per_hour_df.get('Total_Assigned_Revenue', 0) - rev_per_hour_df['Assumed Pay Amount']
                 rev_per_hour_df['Total Net Margin'] = rev_per_hour_df['Net Margin Raw'].apply(lambda x: f"${x:,.2f}")
-                rev_per_hour_df['Margin per Clocked Hour Raw'] = np.where(rev_per_hour_df['Total_Weekly_Clocked_Hrs'] > 0, rev_per_hour_df['Net Margin Raw'] / rev_per_hour_df['Total_Weekly_Clocked_Hrs'], 0.0)
+                rev_per_hour_df['Margin per Clocked Hour Raw'] = np.where(rev_per_hour_df.get('Total_Weekly_Clocked_Hrs', 0) > 0, rev_per_hour_df['Net Margin Raw'] / rev_per_hour_df.get('Total_Weekly_Clocked_Hrs', 1), 0.0)
                 rev_per_hour_df['Margin per Clocked Hour'] = rev_per_hour_df['Margin per Clocked Hour Raw'].apply(lambda x: f"${x:,.2f}/hr")
                 
                 show_rev_per_hour_sorted = rev_per_hour_df.sort_values(by='Pay Pct', ascending=False)[['Name', 'Total Jobs', 'Total Clocked', 'Total Assigned Value', 'Assumed Pay', 'Pay % vs Assigned Revenue', 'Total Net Margin', 'Margin per Clocked Hour']]
@@ -1099,12 +1102,12 @@ if time_bytes and ops_bytes:
                 
             df_prof_totals = df_macro_pay.copy()
             if selected_bu_filter != "All Sectors":
-                df_prof_totals = df_prof_totals[df_prof_totals['Business Unit'] == selected_bu_filter]
+                df_prof_totals = df_prof_totals[df_prof_totals.get('Business Unit', '') == selected_bu_filter]
                 
             if not df_prof_totals.empty:
-                gross_revenue_sum = df_prof_totals['Total Invoice Amount'].sum()
-                combined_cost_sum = df_prof_totals['Combined_Lowe_Costs'].sum()
-                labor_payload_sum = df_prof_totals['Assumed_Labor_Payload'].sum()
+                gross_revenue_sum = df_prof_totals.get('Total Invoice Amount', pd.Series([0.0])).sum()
+                combined_cost_sum = df_prof_totals.get('Combined_Lowe_Costs', pd.Series([0.0])).sum()
+                labor_payload_sum = df_prof_totals.get('Assumed_Labor_Payload', pd.Series([0.0])).sum()
                 
                 if selected_bu_filter in ["All Sectors", "Lowes - Water Heaters", "Lowes - Simple Installs"]:
                     if 'sean marble' in [tech.lower() for tech in ops_df['Name'].unique()]:
@@ -1126,11 +1129,11 @@ if time_bytes and ops_bytes:
                 
                 df_prof_filtered = df_macro_pay.copy()
                 if selected_bu_filter != "All Sectors":
-                    df_prof_filtered = df_prof_filtered[df_prof_filtered['Business Unit'] == selected_bu_filter]
-                df_prof_filtered = df_prof_filtered[~df_prof_filtered['Is_Contractor']]
+                    df_prof_filtered = df_prof_filtered[df_prof_filtered.get('Business Unit', '') == selected_bu_filter]
+                df_prof_filtered = df_prof_filtered[~df_prof_filtered.get('Is_Contractor', pd.Series([False]*len(df_prof_filtered)))]
                 
                 if not df_prof_filtered.empty:
-                    df_prof_filtered['Profit Margin %'] = np.where(df_prof_filtered['Total Invoice Amount'] > 0, (df_prof_filtered['Net_Profit_Raw'] / df_prof_filtered['Total Invoice Amount'] * 100), 0.0)
+                    df_prof_filtered['Profit Margin %'] = np.where(df_prof_filtered.get('Total Invoice Amount', 0) > 0, (df_prof_filtered.get('Net_Profit_Raw', 0) / df_prof_filtered.get('Total Invoice Amount', 1) * 100), 0.0)
                     
                     if selected_sort_choice == "Highest Net Profit": df_prof_filtered = df_prof_filtered.sort_values(by='Net_Profit_Raw', ascending=False)
                     elif selected_sort_choice == "Lowest Net Profit": df_prof_filtered = df_prof_filtered.sort_values(by='Net_Profit_Raw', ascending=True)
@@ -1141,14 +1144,14 @@ if time_bytes and ops_bytes:
                     prof_register_rows = []
                     for _, r in df_prof_filtered.iterrows():
                         prof_register_rows.append({
-                            "Job ID": str(int(r['#ID'])),
-                            "Line of Business": r['Business Unit'],
-                            "Crew Assigned": r['Assigned Team Members'],
-                            "Gross Invoice": f"${r['Total Invoice Amount']:,.2f}",
-                            "Total Combined Cost": f"${r['Combined_Lowe_Costs']:,.2f}",
-                            "Tech Wage Burden": f"${r['Assumed_Labor_Payload']:,.2f}",
-                            "Net Profit ($)": f"${r['Net_Profit_Raw']:,.2f}",
-                            "Margin %": f"{r['Profit Margin %']:.1f}%"
+                            "Job ID": str(int(r.get('#ID', 0))),
+                            "Line of Business": r.get('Business Unit', ''),
+                            "Crew Assigned": r.get('Assigned Team Members', ''),
+                            "Gross Invoice": f"${r.get('Total Invoice Amount', 0.0):,.2f}",
+                            "Total Combined Cost": f"${r.get('Combined_Lowe_Costs', 0.0):,.2f}",
+                            "Tech Wage Burden": f"${r.get('Assumed_Labor_Payload', 0.0):,.2f}",
+                            "Net Profit ($)": f"${r.get('Net_Profit_Raw', 0.0):,.2f}",
+                            "Margin %": f"{r.get('Profit Margin %', 0.0):.1f}%"
                         })
                     
                     prof_register_df = pd.DataFrame(prof_register_rows, columns=[
@@ -1203,8 +1206,20 @@ if time_bytes and ops_bytes:
                 tech_data = final_df[final_df['Name'] == tech].iloc[0]
                 report_data = []
                 for full_day, short_day in {"Monday": "Mon", "Tuesday": "Tue", "Wednesday": "Wed", "Thursday": "Thu", "Friday": "Fri", "Saturday": "Sat", "Sunday": "Sun"}.items():
-                    report_data.append({"Day": full_day, "Jobs": int(tech_data[short_day + '_Job_Count']), "Clocked Time": format_hm(tech_data[short_day + '_Clocked_Hrs']), "Job Time": format_hm(final_df[final_df['Name'] == tech].iloc[0][short_day + '_Job_Hrs']), "Difference": format_hm(tech_data[short_day + '_Diff_Hrs'])})
-                report_data.append({"Day": "TOTAL WEEKLY", "Jobs": int(tech_data['Total_Weekly_Job_Count']), "Clocked Time": format_hm(tech_data['Total_Weekly_Clocked_Hrs']), "Job Time": format_hm(tech_data['Total_Weekly_Job_Hrs']), "Difference": format_hm(tech_data['Total_Weekly_Diff_Hrs'])})
+                    report_data.append({
+                        "Day": full_day, 
+                        "Jobs": int(tech_data.get(short_day + '_Job_Count', 0)), 
+                        "Clocked Time": format_hm(tech_data.get(short_day + '_Clocked_Hrs', 0.0)), 
+                        "Job Time": format_hm(tech_data.get(short_day + '_Job_Hrs', 0.0)), 
+                        "Difference": format_hm(tech_data.get(short_day + '_Diff_Hrs', 0.0))
+                    })
+                report_data.append({
+                    "Day": "TOTAL WEEKLY", 
+                    "Jobs": int(tech_data.get('Total_Weekly_Job_Count', 0)), 
+                    "Clocked Time": format_hm(tech_data.get('Total_Weekly_Clocked_Hrs', 0.0)), 
+                    "Job Time": format_hm(tech_data.get('Total_Weekly_Job_Hrs', 0.0)), 
+                    "Difference": format_hm(tech_data.get('Total_Weekly_Diff_Hrs', 0.0))
+                })
                 manager_day_df = pd.DataFrame(report_data)
                 st.dataframe(manager_day_df, use_container_width=True)
                 create_copy_button(manager_day_df, f"manager_overview_{tech}")
@@ -1219,8 +1234,20 @@ if time_bytes and ops_bytes:
                 tech_data = final_df[final_df['Name'] == selected_tech].iloc[0]
                 report_data = []
                 for full_day, short_day in {"Monday": "Mon", "Tuesday": "Tue", "Wednesday": "Wed", "Thursday": "Thu", "Friday": "Fri", "Saturday": "Sat", "Sunday": "Sun"}.items():
-                    report_data.append({"Day": full_day, "Jobs": int(tech_data[short_day + '_Job_Count']), "Clocked Time": format_hm(tech_data[short_day + '_Clocked_Hrs']), "Job Time": format_hm(final_df[final_df['Name'] == selected_tech].iloc[0][short_day + '_Job_Hrs']), "Difference": format_hm(tech_data[short_day + '_Diff_Hrs'])})
-                report_data.append({"Day": "TOTAL WEEKLY", "Jobs": int(tech_data['Total_Weekly_Job_Count']), "Clocked Time": format_hm(tech_data['Total_Weekly_Clocked_Hrs']), "Job Time": format_hm(tech_data['Total_Weekly_Job_Hrs']), "Difference": format_hm(tech_data['Total_Weekly_Diff_Hrs'])})
+                    report_data.append({
+                        "Day": full_day, 
+                        "Jobs": int(tech_data.get(short_day + '_Job_Count', 0)), 
+                        "Clocked Time": format_hm(tech_data.get(short_day + '_Clocked_Hrs', 0.0)), 
+                        "Job Time": format_hm(tech_data.get(short_day + '_Job_Hrs', 0.0)), 
+                        "Difference": format_hm(tech_data.get(short_day + '_Diff_Hrs', 0.0))
+                    })
+                report_data.append({
+                    "Day": "TOTAL WEEKLY", 
+                    "Jobs": int(tech_data.get('Total_Weekly_Job_Count', 0)), 
+                    "Clocked Time": format_hm(tech_data.get('Total_Weekly_Clocked_Hrs', 0.0)), 
+                    "Job Time": format_hm(tech_data.get('Total_Weekly_Job_Hrs', 0.0)), 
+                    "Difference": format_hm(tech_data.get('Total_Weekly_Diff_Hrs', 0.0))
+                })
                 indiv_day_df = pd.DataFrame(report_data)
                 st.dataframe(indiv_day_df, use_container_width=True)
                 create_copy_button(indiv_day_df, f"printable_indiv_{selected_tech}")
@@ -1239,13 +1266,13 @@ if time_bytes and ops_bytes:
                 st.markdown("### **🏆 The Golden Ratio Margin Predictor**")
                 golden_data = []
                 for d in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]:
-                    final_df_d_clocked = final_df[f'{d}_Clocked_Hrs'].sum() if f'{d}_Clocked_Hrs' in final_df.columns else 0.0
-                    final_df_d_job = final_df[f'{d}_Job_Hrs'].sum() if f'{d}_Job_Hrs' in final_df.columns else 0.0
+                    final_df_d_clocked = final_df.get(f'{d}_Clocked_Hrs', pd.Series([0.0])).sum()
+                    final_df_d_job = final_df.get(f'{d}_Job_Hrs', pd.Series([0.0])).sum()
                     day_clocked = final_df_d_clocked
                     day_job = final_df_d_job
                     day_eff = (day_job / day_clocked * 100) if day_clocked > 0 else 0.0
-                    day_lsi = ops_df[(ops_df['Day_of_Week'] == d) & (ops_df['Business Unit'] == 'Lowes - Simple Installs')].shape[0]
-                    day_wh = ops_df[(ops_df['Day_of_Week'] == d) & (ops_df['Business Unit'] == 'Lowes - Water Heaters')].shape[0]
+                    day_lsi = ops_df[(ops_df.get('Day_of_Week', '') == d) & (ops_df.get('Business Unit', '') == 'Lowes - Simple Installs')].shape[0]
+                    day_wh = ops_df[(ops_df.get('Day_of_Week', '') == d) & (ops_df.get('Business Unit', '') == 'Lowes - Water Heaters')].shape[0]
                     total_bu = day_lsi + day_wh
                     lsi_ratio = (day_lsi / total_bu * 100) if total_bu > 0 else 0
                     if total_bu > 0:
@@ -1279,16 +1306,16 @@ if time_bytes and ops_bytes:
                 st.markdown("### **🕵️ The Ghost Punch & Payroll Discrepancy Auditor**")
                 ghost_alerts = []
                 for idx, row in final_df.iterrows():
-                    tech_name = row['Name']
-                    nl = tech_name.lower()
+                    tech_name = row.get('Name', 'Unknown')
+                    nl = str(tech_name).lower()
                     pay_type = "Hourly"
                     if "sean marble" in nl or "michael owens" in nl:
                         pay_type = "Salary"
                     elif "bryan" in nl or "erik" in nl:
                         pay_type = "Piece Rate"
                     for d in ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]:
-                        clocked = row[f'{d}_Clocked_Hrs']
-                        jobs = row[f'{d}_Job_Count']
+                        clocked = row.get(f'{d}_Clocked_Hrs', 0.0)
+                        jobs = row.get(f'{d}_Job_Count', 0)
                         if clocked > 0 and jobs == 0: 
                             ghost_alerts.append({"Technician": tech_name, "Pay Profile": pay_type, "Day": d, "Audit Type": "🕵️ Paid But Idle (Clocked In, 0 Jobs Run)", "Clocked Hours": format_hm(clocked), "Jobs Done": 0})
                         elif clocked == 0 and jobs > 0: 
@@ -1311,7 +1338,7 @@ if time_bytes and ops_bytes:
                 st.markdown("### **📊 Macro Financial Performance Dashboard**")
                 m_col1, m_col2 = st.columns([1, 2])
                 with m_col1:
-                    total_rev = unexploded_ops['Total Invoice Amount'].sum()
+                    total_rev = unexploded_ops.get('Total Invoice Amount', pd.Series([0.0])).sum()
                     st.metric(label="Division Gross Invoiced Volume", value=f"${total_rev:,.2f}")
                     bu_avg_ticket = unexploded_ops.groupby('Business Unit')['Total Invoice Amount'].mean().reset_index()
                     bu_avg_ticket.columns = ['Business Unit', 'Average Ticket Size Raw']
@@ -1320,21 +1347,21 @@ if time_bytes and ops_bytes:
                 with m_col2:
                     st.markdown("**📈 Pay Ratio per Clocked Hour**")
                     rev_per_hour_df = final_df.copy()
-                    rev_per_hour_df['Total Clocked'] = rev_per_hour_df['Total_Weekly_Clocked_Hrs'].apply(format_hm)
-                    rev_per_hour_df['Total Assigned Value'] = rev_per_hour_df['Total_Assigned_Revenue'].apply(lambda x: f"${x:,.2f}")
+                    rev_per_hour_df['Total Clocked'] = rev_per_hour_df.get('Total_Weekly_Clocked_Hrs', pd.Series(0.0, index=rev_per_hour_df.index)).apply(format_hm)
+                    rev_per_hour_df['Total Assigned Value'] = rev_per_hour_df.get('Total_Assigned_Revenue', pd.Series(0.0, index=rev_per_hour_df.index)).apply(lambda x: f"${x:,.2f}")
                     
                     rev_per_hour_df['Assumed Pay Amount'] = rev_per_hour_df.apply(get_adjusted_table_pay, axis=1)
                     rev_per_hour_df['Assumed Pay'] = rev_per_hour_df['Assumed Pay Amount'].apply(lambda x: f"${x:,.2f}" if x > 0 else "-")
-                    rev_per_hour_df['Pay Pct'] = np.where(rev_per_hour_df['Total_Assigned_Revenue'] > 0, (rev_per_hour_df['Assumed Pay Amount'] / rev_per_hour_df['Total_Assigned_Revenue']) * 100, 0.0)
+                    rev_per_hour_df['Pay Pct'] = np.where(rev_per_hour_df.get('Total_Assigned_Revenue', 0) > 0, (rev_per_hour_df['Assumed Pay Amount'] / rev_per_hour_df.get('Total_Assigned_Revenue', 1)) * 100, 0.0)
                     rev_per_hour_df['Pay % vs Assigned Revenue'] = rev_per_hour_df['Pay Pct'].apply(lambda x: f"{x:.1f}%" if x > 0 else "-")
                     show_rev_per_hour = rev_per_hour_df.sort_values(by='Pay Pct', ascending=False)[['Name', 'Total Clocked', 'Total Assigned Value', 'Assumed Pay', 'Pay % vs Assigned Revenue']]
                     st.dataframe(show_rev_per_hour.reset_index(drop=True).style.apply(highlight_pay_pct_row, axis=1), use_container_width=True)
 
             if "📊 Business Unit Revenue Velocity" in test_choices:
                 st.markdown("### **📊 Business Unit Revenue Velocity**")
-                bu_rev = unexploded_ops['Total Invoice Amount'].sum()
+                bu_rev = unexploded_ops.get('Total Invoice Amount', pd.Series([0.0])).sum()
                 bu_rev_df = unexploded_ops.groupby('Business Unit')['Total Invoice Amount'].sum().reset_index()
-                bu_rev_df['Revenue Share %'] = (bu_rev_df['Total Invoice Amount'] / unexploded_ops['Total Invoice Amount'].sum()) * 100
+                bu_rev_df['Revenue Share %'] = (bu_rev_df['Total Invoice Amount'] / unexploded_ops.get('Total Invoice Amount', pd.Series([1.0])).sum()) * 100
                 bu_rev_df['Total Revenue'] = bu_rev_df['Total Invoice Amount'].apply(lambda x: f"${x:,.2f}")
                 bu_rev_df['Revenue Share %'] = bu_rev_df['Revenue Share %'].apply(lambda x: f"{x:.1f}%")
                 st.dataframe(bu_rev_df[['Business Unit', 'Total Revenue', 'Revenue Share %']].reset_index(drop=True), use_container_width=True)
@@ -1342,10 +1369,10 @@ if time_bytes and ops_bytes:
             if "🗺️ Revenue Yield per Drive Hour (Geo-Routing Efficiency)" in test_choices:
                 st.markdown("### **🗺️ Revenue Yield per Drive Hour (Geo-Routing Efficiency)**")
                 route_eff = ops_df.groupby('Name').agg(Total_Revenue=('Total Invoice Amount', 'sum'), Total_Drive_Hrs=('Drive_Time_Hrs', 'sum')).reset_index()
-                route_eff['Rev per Drive Hour Raw'] = np.where(route_eff['Total_Drive_Hrs'] > 0, route_eff['Total_Revenue'] / route_eff['Total_Drive_Hrs'], 0.0)
+                route_eff['Rev per Drive Hour Raw'] = np.where(route_eff.get('Total_Drive_Hrs', 0) > 0, route_eff.get('Total_Revenue', 0) / route_eff.get('Total_Drive_Hrs', 1), 0.0)
                 route_eff = route_eff.sort_values(by='Rev per Drive Hour Raw', ascending=False)
-                route_eff['Total Assigned Revenue'] = route_eff['Total_Revenue'].apply(lambda x: f"${x:,.2f}")
-                route_eff['Total Drive Hours'] = route_eff['Total_Drive_Hrs'].apply(lambda x: f"{x:.1f} hrs")
+                route_eff['Total Assigned Revenue'] = route_eff.get('Total_Revenue', pd.Series([0.0])).apply(lambda x: f"${x:,.2f}")
+                route_eff['Total Drive Hours'] = route_eff.get('Total_Drive_Hrs', pd.Series([0.0])).apply(lambda x: f"{x:.1f} hrs")
                 route_eff['Revenue per Drive Hour'] = route_eff['Rev per Drive Hour Raw'].apply(lambda x: f"{x:.1f}/hr")
                 
                 st.dataframe(route_eff[['Name', 'Total Assigned Revenue', 'Total Drive Hours', 'Revenue per Drive Hour']].reset_index(drop=True), use_container_width=True)
@@ -1354,10 +1381,10 @@ if time_bytes and ops_bytes:
                 st.markdown("### **🦺 Multi-Tech Labor Yield vs. Solo Runs (Co-Efficiency Analysis)**")
                 st.markdown("*(Assesses crew execution values factoring an applied $22.00/hr secondary helper cost burden override)*")
                 df_m = unexploded_ops.copy()
-                df_m['Tech_Count'] = df_m['Assigned Team Members'].apply(lambda x: len([m.strip() for m in str(x).split(',') if m.strip()]))
+                df_m['Tech_Count'] = df_m.get('Assigned Team Members', pd.Series([''])).apply(lambda x: len([m.strip() for m in str(x).split(',') if m.strip()]))
                 df_m['Type'] = np.where(df_m['Tech_Count'] > 1, 'Multi-Tech Team Crew', 'Solo Dispatch Run')
-                df_m['Total_Man_Hours'] = df_m['Tech_Count'] * df_m['Total_Job_Time_Hours']
-                df_m['Helper_Labor_Cost'] = (df_m['Tech_Count'] - 1) * df_m['Total_Job_Time_Hours'] * 22.0
+                df_m['Total_Man_Hours'] = df_m['Tech_Count'] * df_m.get('Total_Job_Time_Hours', 0)
+                df_m['Helper_Labor_Cost'] = (df_m['Tech_Count'] - 1) * df_m.get('Total_Job_Time_Hours', 0) * 22.0
                 
                 summary_yield = df_m.groupby('Type').agg(
                     Job_Count=('#ID', 'count'),
@@ -1395,7 +1422,7 @@ if time_bytes and ops_bytes:
             if "📅 Lowe's Store Staging Delays by Day of the Week" in test_choices:
                 st.markdown("### **📅 Lowe's Store Staging Delays by Day of the Week**")
                 st.markdown("*(Tracks supply chain delay velocities day-by-day to optimize loading schedules)*")
-                store_delay_df = unexploded_ops[unexploded_ops['Store_Time_Hrs'] > 0].copy()
+                store_delay_df = unexploded_ops[unexploded_ops.get('Store_Time_Hrs', 0) > 0].copy()
                 if not store_delay_df.empty:
                     day_order_map = {'Mon': 0, 'Tue': 1, 'Wed': 2, 'Thu': 3, 'Fri': 4, 'Sat': 5, 'Sun': 6}
                     staging_agg = store_delay_df.groupby('Day_of_Week').agg(Total_Visits=('Store_Time_Hrs', 'count'), Total_Hours=('Store_Time_Hrs', 'sum')).reset_index()
@@ -1416,10 +1443,10 @@ if time_bytes and ops_bytes:
                 st.markdown("*(Measures generated invoice revenue returns against the premium wage burden expenses of overtime dispatches)*")
                 ot_audit_rows = []
                 for idx, row in final_df.iterrows():
-                    name = row['Name']
-                    clocked = row['Total_Weekly_Clocked_Hrs']
-                    revenue = row['Total_Assigned_Revenue']
-                    nl = name.lower()
+                    name = row.get('Name', '')
+                    clocked = row.get('Total_Weekly_Clocked_Hrs', 0.0)
+                    revenue = row.get('Total_Assigned_Revenue', 0.0)
+                    nl = str(name).lower()
                     
                     rate = 0.0
                     if 'nate' in nl or 'nathan' in nl: rate = 22.50
@@ -1455,9 +1482,9 @@ if time_bytes and ops_bytes:
                         jid = int(r['#ID']) if ('#ID' in r and pd.notna(r['#ID'])) else "Unknown"
                         whale_summary.append({
                             "Job ID": str(jid),
-                            "Assigned Crew Members": r['Assigned Team Members'],
-                            "Business Unit Sector": r['Business Unit'] if 'Business Unit' in r else "Unknown",
-                            "Ticket Invoiced Revenue": f"${r['Total Invoice Amount']:,.2f}"
+                            "Assigned Crew Members": r.get('Assigned Team Members', ''),
+                            "Business Unit Sector": r.get('Business Unit', 'Unknown'),
+                            "Ticket Invoiced Revenue": f"${r.get('Total Invoice Amount', 0.0):,.2f}"
                         })
                     whale_summary_df = pd.DataFrame(whale_summary)
                     st.dataframe(whale_summary_df, use_container_width=True)
@@ -1509,12 +1536,12 @@ if time_bytes and ops_bytes:
                         Total_Travel_Time=('Drive_Time_Hrs', 'sum')
                     ).reset_index()
                     
-                    geo_yield['Yield per Travel Hour Raw'] = np.where(geo_yield['Total_Travel_Time'] > 0, geo_yield['Gross_Invoiced_Volume'] / geo_yield['Total_Travel_Time'], 0.0)
+                    geo_yield['Yield per Travel Hour Raw'] = np.where(geo_yield.get('Total_Travel_Time', 0) > 0, geo_yield.get('Gross_Invoiced_Volume', 0) / geo_yield.get('Total_Travel_Time', 1), 0.0)
                     geo_yield = geo_yield.sort_values(by='Yield per Travel Hour Raw', ascending=False)
                     
                     show_geo_yield = geo_yield.copy()
-                    show_geo_yield['Gross Invoiced Volume'] = show_geo_yield['Gross_Invoiced_Volume'].apply(lambda x: f"${x:,.2f}")
-                    show_geo_yield['Total Travel Time'] = show_geo_yield['Total_Travel_Time'].apply(lambda x: f"{x:.2f} hrs")
+                    show_geo_yield['Gross Invoiced Volume'] = show_geo_yield.get('Gross_Invoiced_Volume', pd.Series([0.0])).apply(lambda x: f"${x:,.2f}")
+                    show_geo_yield['Total Travel Time'] = show_geo_yield.get('Total_Travel_Time', pd.Series([0.0])).apply(lambda x: f"{x:.2f} hrs")
                     show_geo_yield['Revenue per Travel Hour'] = show_geo_yield['Yield per Travel Hour Raw'].apply(lambda x: f"${x:,.2f}/hr" if x > 0 else "-")
                     
                     final_yield_df = show_geo_yield[['City Location Sector', 'Jobs_Assigned', 'Gross Invoiced Volume', 'Total Travel Time', 'Revenue per Travel Hour']].rename(columns={'City Location Sector': 'Territory City', 'Jobs_Assigned': 'Jobs Closed'})
