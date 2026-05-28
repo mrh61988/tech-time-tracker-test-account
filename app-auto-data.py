@@ -574,8 +574,11 @@ if refresh_btn:
 
 @st.cache_data(ttl=3600)  
 def fetch_google_drive_data():
-    time_sheet_id = "1x-3eWRxH6V0Vmdre7DbWrrSXHw8NGISR"  
-    ops_export_id = "1iIi7ng55K6UfU64oDEuvM5j8m6G0rD9N"
+    
+    # --- UPDATED WITH NEW GOOGLE SHEETS IDs ---
+    time_sheet_id = "1DoOX2msE4D_7sZY_zJ_ttK0v_BeEQBSqGsHAP7l9iHo"  
+    ops_export_id = "19OjHTTCf3qV5jKNRiKDa9eQz-RZ58gRiFMAsOzxW0YU"
+    # ------------------------------------------
     
     def robust_fetch(file_id):
         import time
