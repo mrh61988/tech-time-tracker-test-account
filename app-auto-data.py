@@ -121,6 +121,14 @@ st.markdown("""
 # ------------------------------
 
 # --- GLOBAL HELPER & HIGHLIGHTING FUNCTIONS ---
+def safe_id(val):
+    """Safely parses Job IDs whether they are floats (24749.0), strings with symbols ('#24749'), or NaN."""
+    if pd.isna(val) or val == '': return "Unknown"
+    try:
+        return str(int(float(str(val).replace('#', '').replace(',', '').strip())))
+    except:
+        return str(val)
+
 def format_hm(hrs):
     if pd.isna(hrs) or hrs == 0: return "-"
     sign = "-" if hrs < 0 else ""
@@ -391,20 +399,18 @@ def run_baselines_matrix(ops_df):
         if not tech_jobs.empty:
             max_idx = tech_jobs['Total_Job_Time_Hours'].idxmax()
             max_job_val = tech_jobs['Total_Job_Time_Hours'].max()
-            max_job_id = tech_jobs.loc[max_idx, '#ID'] if '#ID' in tech_jobs.columns else 'Unknown'
-            if isinstance(max_job_id, float) and max_job_id.is_integer():
-                max_job_id = int(max_job_id)
+            raw_id = tech_jobs.loc[max_idx, '#ID'] if '#ID' in tech_jobs.columns else 'Unknown'
+            max_job_id = safe_id(raw_id)
             max_job_str = f"{format_hm(max_job_val)} (ID: {max_job_id})"
         else:
             max_job_str = "-"
             
         if pd.notna(div_wh_baseline):
             for _, j in t_wh[t_wh['Total_Job_Time_Hours'] > div_wh_baseline].iterrows():
-                jid = int(j['#ID']) if ('#ID' in j and isinstance(j['#ID'], float) and j['#ID'].is_integer()) else (j['#ID'] if '#ID' in j else 'Unknown')
                 diff_val = j['Total_Job_Time_Hours'] - div_wh_baseline
                 wh_over_baseline_rows.append({
                     "Technician": tech_name,
-                    "Job ID": str(jid),
+                    "Job ID": safe_id(j.get('#ID')),
                     "Job Duration": format_hm(j['Total_Job_Time_Hours']),
                     "Over Division Average By": f"+{format_hm(diff_val)}",
                     "sort_key": diff_val
@@ -412,11 +418,10 @@ def run_baselines_matrix(ops_df):
         
         if pd.notna(div_lsi_baseline):
             for _, j in t_lsi[t_lsi['Total_Job_Time_Hours'] > div_lsi_baseline].iterrows():
-                jid = int(j['#ID']) if ('#ID' in j and isinstance(j['#ID'], float) and j['#ID'].is_integer()) else (j['#ID'] if '#ID' in j else 'Unknown')
                 diff_val = j['Total_Job_Time_Hours'] - div_lsi_baseline
                 lsi_over_baseline_rows.append({
                     "Technician": tech_name,
-                    "Job ID": str(jid),
+                    "Job ID": safe_id(j.get('#ID')),
                     "Job Duration": format_hm(j['Total_Job_Time_Hours']),
                     "Over Division Average By": f"+{format_hm(diff_val)}",
                     "sort_key": diff_val
@@ -575,52 +580,37 @@ if refresh_btn:
 @st.cache_data(ttl=3600)  
 def fetch_google_drive_data():
     
-    # --- UPDATED WITH THE NEW GOOGLE SHEETS IDs ---
+    # --- UPDATED WITH NEW GOOGLE SHEETS IDs & GIDs ---
     time_sheet_id = "1DoOX2msE4D_7sZY_zJ_ttK0v_BeEQBSqGsHAP7l9iHo"  
-    ops_export_id = "19OjHTTCf3qV5jKNRiKDa9eQz-RZ58gRiFMAsOzxW0YU"
-    # ----------------------------------------------
+    time_gid = "1647128099"
     
-    def robust_fetch(file_id):
+    ops_export_id = "19OjHTTCf3qV5jKNRiKDa9eQz-RZ58gRiFMAsOzxW0YU"
+    ops_gid = "490320926"
+    # -------------------------------------------------
+    
+    def pull_csv(sheet_id, gid):
         import time
         cb = int(time.time())
+        url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}&cb={cb}"
         
-        # METHOD 1: Try reading it as a Native Google Sheet
-        url1 = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=csv&cb={cb}"
-        resp1 = requests.get(url1)
-        if resp1.status_code == 200 and not resp1.content.strip().lower().startswith(b"<!doctype html"):
-            return resp1.content
-            
-        # METHOD 2: Try reading it as a generic uploaded file (like a CSV stored in Drive)
-        url2 = f"https://drive.google.com/uc?export=download&id={file_id}"
-        session = requests.Session()
-        resp2 = session.get(url2)
-        
-        # METHOD 3: Bypass Google's "Virus Scan Warning" page for larger files
-        if b'confirm=' in resp2.content and b'download_warning' in resp2.content:
-            token = None
-            for key, value in session.cookies.items():
-                if key.startswith('download_warning'):
-                    token = value
-                    break
-            if token:
-                url3 = f"https://drive.google.com/uc?export=download&id={file_id}&confirm={token}"
-                resp2 = session.get(url3)
-                
-        if resp2.status_code == 200 and not resp2.content.strip().lower().startswith(b"<!doctype html"):
-            return resp2.content
-            
-        if resp1.status_code == 401 or resp2.status_code == 401:
-            st.sidebar.error(f"⚠️ HTTP Error 401 (Unauthorized) for file {file_id[:5]}... Please ensure the Google Sheet is set to 'Anyone with the link can view'.")
-        
-        return None
+        try:
+            resp = requests.get(url)
+            if resp.status_code == 200:
+                content_start = resp.content[:100].lower()
+                if b"<!doctype html" in content_start or b"<html" in content_start:
+                    st.sidebar.error(f"⚠️ Google blocked the download for sheet {sheet_id[:5]}... It returned a web page instead of data (likely a login screen). Please verify 'General access' is set to 'Anyone with the link'.")
+                    return None
+                return resp.content
+            else:
+                st.sidebar.error(f"⚠️ HTTP Error {resp.status_code} for file {sheet_id[:5]}...")
+                return None
+        except Exception as e:
+            st.sidebar.error(f"⚠️ Request failed: {e}")
+            return None
 
-    time_bytes = robust_fetch(time_sheet_id)
-    ops_bytes = robust_fetch(ops_export_id)
+    time_bytes = pull_csv(time_sheet_id, time_gid)
+    ops_bytes = pull_csv(ops_export_id, ops_gid)
     
-    if not time_bytes or not ops_bytes:
-        st.sidebar.error("⚠️ Failed to fetch data. Ensure files are shared properly and are valid data files.")
-        return None, None
-        
     return time_bytes, ops_bytes
 
 # Execute the fetch logic
@@ -1150,7 +1140,7 @@ if time_bytes and ops_bytes:
                     prof_register_rows = []
                     for _, r in df_prof_filtered.iterrows():
                         prof_register_rows.append({
-                            "Job ID": str(int(r.get('#ID', 0))),
+                            "Job ID": safe_id(r.get('#ID')),
                             "Line of Business": r.get('Business Unit', ''),
                             "Crew Assigned": r.get('Assigned Team Members', ''),
                             "Gross Invoice": f"${r.get('Total Invoice Amount', 0.0):,.2f}",
@@ -1354,7 +1344,6 @@ if time_bytes and ops_bytes:
                     st.markdown("**📈 Pay Ratio per Clocked Hour**")
                     rev_per_hour_df = final_df.copy()
                     rev_per_hour_df['Total Clocked'] = rev_per_hour_df.get('Total_Weekly_Clocked_Hrs', pd.Series(0.0, index=rev_per_hour_df.index)).apply(format_hm)
-                    rev_per_hour_df['Total Jobs'] = rev_per_hour_df.get('Total_Weekly_Job_Count', pd.Series(0, index=rev_per_hour_df.index)).astype(int)
                     rev_per_hour_df['Total Assigned Value'] = rev_per_hour_df.get('Total_Assigned_Revenue', pd.Series(0.0, index=rev_per_hour_df.index)).apply(lambda x: f"${x:,.2f}")
                     
                     rev_per_hour_df['Assumed Pay Amount'] = rev_per_hour_df.apply(get_adjusted_table_pay, axis=1)
@@ -1486,9 +1475,8 @@ if time_bytes and ops_bytes:
                     whale_df = unexploded_ops.sort_values(by='Total Invoice Amount', ascending=False).head(5).copy()
                     whale_summary = []
                     for _, r in whale_df.iterrows():
-                        jid = int(r['#ID']) if ('#ID' in r and pd.notna(r['#ID'])) else "Unknown"
                         whale_summary.append({
-                            "Job ID": str(jid),
+                            "Job ID": safe_id(r.get('#ID')),
                             "Assigned Crew Members": r.get('Assigned Team Members', ''),
                             "Business Unit Sector": r.get('Business Unit', 'Unknown'),
                             "Ticket Invoiced Revenue": f"${r.get('Total Invoice Amount', 0.0):,.2f}"
@@ -1518,7 +1506,7 @@ if time_bytes and ops_bytes:
                     map_points = []
                     for idx, r in df_map.iterrows():
                         base_coords = AZ_COORDS.get(r['Parsed_City'], [33.4484, -112.0740])
-                        np.random.seed(int(r['#ID']) if pd.notna(r['#ID']) else idx)
+                        np.random.seed(int(r.get('#ID', idx)) if pd.notna(r.get('#ID')) and str(r.get('#ID')).isnumeric() else idx)
                         lat_jit = base_coords[0] + np.random.uniform(-0.025, 0.025)
                         lon_jit = base_coords[1] + np.random.uniform(-0.025, 0.025)
                         map_points.append({"latitude": lat_jit, "longitude": lon_jit})
