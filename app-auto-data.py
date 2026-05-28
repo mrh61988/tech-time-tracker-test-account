@@ -296,7 +296,6 @@ def highlight_low_margins(row):
             pass
     return styles
 
-# PROTECTED HOURLY ANALYSIS PAY DELEGATOR LAYER SECURED
 def get_adjusted_table_pay(row):
     if isinstance(row, bool) or 'Name' not in row: return 0.0
     nl = str(row['Name']).lower()
@@ -305,7 +304,6 @@ def get_adjusted_table_pay(row):
         return max(0.0, base_pay)
     return base_pay
 
-# NATIVE SYSTEM CLIPBOARD DATA EXPORTER (DEFINED AT GLOBAL SCOPE LEVEL)
 def create_copy_button(df, raw_key):
     safe_key = "".join([c if c.isalnum() else "_" for c in raw_key])
     tsv_str = df.to_csv(sep='\t', index=False)
@@ -575,10 +573,10 @@ if refresh_btn:
 
 @st.cache_data(ttl=3600)  # Automatically caches the download to prevent spamming Google APIs (1 hr expiration)
 def fetch_google_drive_data():
-    # Converting the standard "/view?usp=sharing" links to direct download links
-    time_sheet_id = "1iIi7ng55K6UfU64oDEuvM5j8m6G0rD9N"  # Replace if this id is actually the ops file
+    time_sheet_id = "1iIi7ng55K6UfU64oDEuvM5j8m6G0rD9N"  
     ops_export_id = "1x-3eWRxH6V0Vmdre7DbWrrSXHw8NGISR"
     
+    # Try fetching as a direct file download first (Google Drive format)
     time_url = f"https://drive.google.com/uc?export=download&id={time_sheet_id}"
     ops_url = f"https://drive.google.com/uc?export=download&id={ops_export_id}"
     
@@ -586,8 +584,20 @@ def fetch_google_drive_data():
         time_resp = requests.get(time_url)
         ops_resp = requests.get(ops_url)
         
+        # If the direct download hits an HTML page (like a login or viewer screen), fallback to Sheets CSV format
+        if b"<!DOCTYPE html>" in ops_resp.content[:100].lower() or b"<html" in ops_resp.content[:100].lower():
+            time_url = f"https://docs.google.com/spreadsheets/d/{time_sheet_id}/export?format=csv"
+            ops_url = f"https://docs.google.com/spreadsheets/d/{ops_export_id}/export?format=csv"
+            time_resp = requests.get(time_url)
+            ops_resp = requests.get(ops_url)
+
+        # Final check if the requests failed completely or still returned an HTML page
         if time_resp.status_code != 200 or ops_resp.status_code != 200:
-            st.sidebar.error("⚠️ Failed to fetch data. Ensure Google Drive links are set to 'Anyone with the link can view'.")
+            st.sidebar.error("⚠️ Failed to fetch data. Verify link sharing permissions.")
+            return None, None
+            
+        if b"<!DOCTYPE html>" in ops_resp.content[:100].lower() or b"<html" in ops_resp.content[:100].lower():
+            st.sidebar.error("⚠️ Google still returned a web page instead of CSV data. Verify it is set to 'Anyone with the link can view'.")
             return None, None
             
         return time_resp.content, ops_resp.content
@@ -791,9 +801,8 @@ if time_bytes and ops_bytes:
         final_df['Rev_Per_Clocked_Hr'] = np.where(final_df['Total_Weekly_Clocked_Hrs'] > 0, final_df['Total_Assigned_Revenue'] / final_df['Total_Weekly_Clocked_Hrs'], 0.0)
 
         # =========================================================================================
-        # 🧪 SEAN MARBLE TIME-SHEET ATTENDANCE ABSENCE EVALUATION CHECK LOOP (GLOBAL SYNCHRONIZATION)
+        # 🧪 SEAN MARBLE TIME-SHEET ATTENDANCE ABSENCE EVALUATION CHECK LOOP
         # =========================================================================================
-        # Standard weekly base salary mapping logic evaluates standard weekdays cleanly
         sean_timecard = final_df[final_df['Name'] == 'Sean Marble']
         if not sean_timecard.empty:
             sean_row = sean_timecard.iloc[0]
@@ -807,14 +816,13 @@ if time_bytes and ops_bytes:
 
         st.session_state['sean_absence_penalty_global'] = sean_penalty_value
 
-        # PERFORMANCE MATRICES GENERATION POSITIONED SAFELY ON TOP PIPELINE LAYER TO SHIELD LABELS FROM CONFLICTS
+        # PERFORMANCE MATRICES GENERATION
         final_df['LSI_Goal_Hrs'] = final_df['Simple_Installs_Count'] * 2.0
         final_df['WH_Goal_Hrs'] = final_df['Water_Heaters_Count'] * 3.5
         final_df['Total_Goal_Hrs'] = final_df['LSI_Goal_Hrs'] + final_df['WH_Goal_Hrs']
         final_df['Assumed_LSI_Clocked'] = np.where(final_df['Total_Goal_Hrs'] > 0, final_df['Total_Weekly_Clocked_Hrs'] * (final_df['LSI_Goal_Hrs'] / final_df['Total_Goal_Hrs']), 0.0)
         final_df['Assumed_WH_Clocked'] = np.where(final_df['Total_Goal_Hrs'] > 0, final_df['Total_Weekly_Clocked_Hrs'] * (final_df['WH_Goal_Hrs'] / final_df['Total_Goal_Hrs']), 0.0)
 
-        # Fuel computational row pay updates safely across mapped dict paths using ZIP directly
         rev_per_hour_df_calc = final_df.copy()
         rev_per_hour_df_calc['Assumed Pay Amount'] = rev_per_hour_df_calc.apply(get_adjusted_table_pay, axis=1)
 
