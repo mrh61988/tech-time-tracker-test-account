@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import io
 import requests
+import time
 
 # Set up the page layout
 st.set_page_config(page_title="Tech Time Tracker", layout="wide")
@@ -567,31 +568,25 @@ st.sidebar.header("📂 Data Loading Pipeline")
 # Render a Google Sheets / Drive Download Button
 refresh_btn = st.sidebar.button("🔄 Refresh Data from Google Sheets")
 
-# If the button is clicked, we clear the cache so it forces a re-download of the URLs
+# If the button is clicked, we clear the cache specifically for the fetch function
 if refresh_btn:
-    st.cache_data.clear()
+    st.cache_data.clear() # Clears Streamlit cache to pull fresh
 
 @st.cache_data(ttl=3600)  # Automatically caches the download to prevent spamming Google APIs (1 hr expiration)
 def fetch_google_drive_data():
-    # --- SWAPPED IDs HERE ---
     time_sheet_id = "1x-3eWRxH6V0Vmdre7DbWrrSXHw8NGISR"  
     ops_export_id = "1iIi7ng55K6UfU64oDEuvM5j8m6G0rD9N"
-    # ------------------------
     
-    # Try fetching as a direct file download first (Google Drive format)
-    time_url = f"https://drive.google.com/uc?export=download&id={time_sheet_id}"
-    ops_url = f"https://drive.google.com/uc?export=download&id={ops_export_id}"
+    # CACHE BUSTER: A changing number that forces Google to skip its internal cache and generate fresh data
+    cb = int(time.time())
+    
+    # We use the direct Sheets CSV export URLs and attach the cache buster to the end
+    time_url = f"https://docs.google.com/spreadsheets/d/{time_sheet_id}/export?format=csv&cb={cb}"
+    ops_url = f"https://docs.google.com/spreadsheets/d/{ops_export_id}/export?format=csv&cb={cb}"
     
     try:
         time_resp = requests.get(time_url)
         ops_resp = requests.get(ops_url)
-        
-        # If the direct download hits an HTML page (like a login or viewer screen), fallback to Sheets CSV format
-        if b"<!DOCTYPE html>" in ops_resp.content[:100].lower() or b"<html" in ops_resp.content[:100].lower():
-            time_url = f"https://docs.google.com/spreadsheets/d/{time_sheet_id}/export?format=csv"
-            ops_url = f"https://docs.google.com/spreadsheets/d/{ops_export_id}/export?format=csv"
-            time_resp = requests.get(time_url)
-            ops_resp = requests.get(ops_url)
 
         # Final check if the requests failed completely or still returned an HTML page
         if time_resp.status_code != 200 or ops_resp.status_code != 200:
@@ -599,7 +594,7 @@ def fetch_google_drive_data():
             return None, None
             
         if b"<!DOCTYPE html>" in ops_resp.content[:100].lower() or b"<html" in ops_resp.content[:100].lower():
-            st.sidebar.error("⚠️ Google still returned a web page instead of CSV data. Verify it is set to 'Anyone with the link can view'.")
+            st.sidebar.error("⚠️ Google returned a web page instead of CSV data. Verify it is set to 'Anyone with the link can view'.")
             return None, None
             
         return time_resp.content, ops_resp.content
