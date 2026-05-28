@@ -573,8 +573,10 @@ if refresh_btn:
 
 @st.cache_data(ttl=3600)  # Automatically caches the download to prevent spamming Google APIs (1 hr expiration)
 def fetch_google_drive_data():
-    time_sheet_id = "1iIi7ng55K6UfU64oDEuvM5j8m6G0rD9N"  
-    ops_export_id = "1x-3eWRxH6V0Vmdre7DbWrrSXHw8NGISR"
+    # --- SWAPPED IDs HERE ---
+    time_sheet_id = "1x-3eWRxH6V0Vmdre7DbWrrSXHw8NGISR"  
+    ops_export_id = "1iIi7ng55K6UfU64oDEuvM5j8m6G0rD9N"
+    # ------------------------
     
     # Try fetching as a direct file download first (Google Drive format)
     time_url = f"https://drive.google.com/uc?export=download&id={time_sheet_id}"
